@@ -1,0 +1,8 @@
+[package]
+name = "ascii-art"
+version = "0.1.0"
+edition = "2024"
+homepage = "https://github.com/auricvex/ascii-art"
+license = "Apache-2.0 OR MIT"
+
+[dependencies]
