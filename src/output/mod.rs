@@ -57,6 +57,7 @@ pub fn write_file(output: &str, path: &Path) -> Result<()> {
 }
 
 /// Copy rendered output to the system clipboard.
+#[cfg(feature = "clipboard")]
 pub fn write_clipboard(output: &str) -> Result<()> {
     let mut clipboard = arboard::Clipboard::new()
         .map_err(|e| crate::error::FigoError::Clipboard(format!("cannot open clipboard: {e}")))?;
@@ -64,6 +65,14 @@ pub fn write_clipboard(output: &str) -> Result<()> {
         .set_text(output)
         .map_err(|e| crate::error::FigoError::Clipboard(format!("cannot set clipboard: {e}")))?;
     Ok(())
+}
+
+/// Copy rendered output to the system clipboard.
+#[cfg(not(feature = "clipboard"))]
+pub fn write_clipboard(_output: &str) -> Result<()> {
+    Err(crate::error::FigoError::Clipboard(
+        "clipboard support is disabled; enable the 'clipboard' feature".into(),
+    ))
 }
 
 #[cfg(test)]

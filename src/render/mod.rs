@@ -7,7 +7,7 @@
 //!
 //! # Core concepts
 //!
-//! * [`Surface`] — a clipped drawing target backed by a [`Canvas`].
+//! * [`Surface`] — a clipped drawing target backed by a [`crate::canvas::Canvas`].
 //! * [`BoxConstraints`] — min/max width/height passed down during layout.
 //! * [`Widget`] — trait for anything that can be measured, laid out, and painted.
 //! * [`Node`] — a bordered rectangular component with content and padding.

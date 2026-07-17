@@ -1,9 +1,9 @@
 //! Sequence diagrams with participants and messages.
 //!
-//! Each participant occupies a "lane" of width [`LaneLayout::lane_width`]
-//! cells. The participant's box is inset by [`LANE_GAP_HALF`] cells on each
-//! side, so adjacent boxes display a [`LANE_GAP`] (2-cell) horizontal gap
-//! regardless of how many participants are stacked.
+//! Each participant occupies a "lane" of width `lane_width` cells. The
+//! participant's box is inset by `LANE_GAP_HALF` cells on each side, so
+//! adjacent boxes display a `LANE_GAP` (2-cell) horizontal gap regardless of
+//! how many participants are stacked.
 //!
 //! Messages are routed through [`crate::layout::Connector`] with a one-cell
 //! invisible rect at each lifeline column. Connector's z-order puts the

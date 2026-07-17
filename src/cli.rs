@@ -15,8 +15,9 @@ pub struct Cli {
     #[arg(long, global = true)]
     pub output: Option<PathBuf>,
 
-    /// Copy output to system clipboard
+    /// Copy output to system clipboard (requires the `clipboard` feature)
     #[arg(long, global = true)]
+    #[cfg_attr(not(feature = "clipboard"), arg(hide = true))]
     pub clipboard: bool,
 }
 
