@@ -1,1 +1,16 @@
+# Build output
 /target
+
+# Editor/IDE files
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Rust
+*.rs.bk

@@ -1,0 +1,11 @@
+---
+source: src/diagrams/box_art.rs
+assertion_line: 248
+expression: out
+---
++- Note ---------------+
+| This is a long line  |
+| that should wrap     |
+| onto multiple lines  |
+| inside the box.      |
++----------------------+

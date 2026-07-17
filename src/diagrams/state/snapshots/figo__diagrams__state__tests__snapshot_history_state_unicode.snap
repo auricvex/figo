@@ -1,0 +1,11 @@
+---
+source: src/diagrams/state/mod.rs
+assertion_line: 263
+expression: out
+---
+
+                   pause      resume
+               ──────────────────────────
+        ╭────────────╮    ╭▼╮    ╭──────▼─────╮
+  ●────>│    Idle    │    │H│    │  Running   │
+        ╰────────────╯    ╰─╯    ╰────────────╯

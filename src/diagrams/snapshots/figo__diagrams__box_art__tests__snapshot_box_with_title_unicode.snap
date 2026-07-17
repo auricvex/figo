@@ -1,0 +1,9 @@
+---
+source: src/diagrams/box_art.rs
+assertion_line: 237
+expression: out
+---
+┌─ Overview ─────────────────┐
+│ This is a sample box with  │
+│ a title.                   │
+└────────────────────────────┘

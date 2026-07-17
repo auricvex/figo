@@ -1,0 +1,8 @@
+---
+source: src/diagrams/box_art.rs
+assertion_line: 258
+expression: out
+---
+╔══════════════════╗
+║ Double border    ║
+╚══════════════════╝

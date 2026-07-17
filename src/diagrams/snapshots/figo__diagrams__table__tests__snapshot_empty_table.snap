@@ -1,0 +1,7 @@
+---
+source: src/diagrams/table.rs
+assertion_line: 357
+expression: out
+---
++----------------------------+
++----------------------------+

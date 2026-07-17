@@ -1,0 +1,11 @@
+---
+source: src/diagrams/box_art.rs
+assertion_line: 270
+expression: out
+---
+╭────────────────────────────╮
+│                            │
+│     Centered text with     │
+│          padding           │
+│                            │
+╰────────────────────────────╯

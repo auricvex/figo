@@ -1,0 +1,11 @@
+---
+source: src/diagrams/state/mod.rs
+assertion_line: 108
+expression: out
+---
+
+                      start         finish
+               -------------------------------
+        +------------+    +------v-----+    +v+
+  *────>|    Idle    |    |  Running   |    |O|
+        +------------+    +------------+    +-+
