@@ -106,7 +106,7 @@ jobs:
           files: dist/figo-*
 
       - name: Generate build provenance attestation
-        uses: actions/attest-build-provenance@v1
+        uses: actions/attest-build-provenance@v4
         with:
           subject-path: dist/figo-${{ matrix.target }}.${{ matrix.archive }}
 
