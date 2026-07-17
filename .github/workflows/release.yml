@@ -30,7 +30,7 @@ jobs:
 
       - name: Create release
         id: release
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3
         with:
           name: figo ${{ steps.changelog.outputs.version }}
           draft: false
@@ -101,7 +101,7 @@ jobs:
           Compress-Archive -Path "target/${{ matrix.target }}/release/figo.exe" -DestinationPath "dist/$archive"
 
       - name: Upload release asset
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3
         with:
           files: dist/figo-*
 
