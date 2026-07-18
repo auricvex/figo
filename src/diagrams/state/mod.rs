@@ -1,4 +1,4 @@
-//! UML state machine diagrams with states, transitions, and composite states.
+//! FSM state diagrams with automatic layered layout.
 
 pub mod layout;
 pub mod render;
@@ -13,57 +13,48 @@ mod tests {
     use crate::style::Charset;
 
     #[test]
-    fn test_simple_state() {
+    fn test_simple_fsm() {
         let sd = StateDiagram::new(80, Charset::Unicode)
             .add_state(StateNode {
                 id: "idle".into(),
                 label: "Idle".into(),
                 state_type: StateType::Simple,
-                row: 0,
-                col: 0,
-                children: vec![],
             })
             .add_state(StateNode {
                 id: "done".into(),
                 label: "Done".into(),
-                state_type: StateType::Final,
-                row: 0,
-                col: 1,
-                children: vec![],
+                state_type: StateType::Accepting,
             })
             .initial("idle")
             .add_transition("idle", "done", Some("finish"));
         let out = sd.build().unwrap();
         assert!(out.contains("Idle"));
+        assert!(out.contains("Done"));
         assert!(out.contains("finish"));
+        // Accepting state should have double border (two sets of rounded corners).
+        assert!(
+            out.matches('╭').count() >= 2,
+            "accepting state needs outer and inner top-left corners"
+        );
     }
 
     #[test]
-    fn snapshot_simple_state_unicode() {
+    fn test_serial_fsm_unicode() {
         let out = StateDiagram::new(80, Charset::Unicode)
             .add_state(StateNode {
                 id: "idle".into(),
                 label: "Idle".into(),
                 state_type: StateType::Simple,
-                row: 0,
-                col: 0,
-                children: vec![],
             })
             .add_state(StateNode {
                 id: "running".into(),
                 label: "Running".into(),
                 state_type: StateType::Simple,
-                row: 0,
-                col: 1,
-                children: vec![],
             })
             .add_state(StateNode {
                 id: "done".into(),
                 label: "Done".into(),
-                state_type: StateType::Final,
-                row: 0,
-                col: 2,
-                children: vec![],
+                state_type: StateType::Accepting,
             })
             .initial("idle")
             .add_transition("idle", "running", Some("start"))
@@ -74,31 +65,22 @@ mod tests {
     }
 
     #[test]
-    fn snapshot_simple_state_ascii() {
+    fn test_serial_fsm_ascii() {
         let out = StateDiagram::new(80, Charset::Ascii)
             .add_state(StateNode {
                 id: "idle".into(),
                 label: "Idle".into(),
                 state_type: StateType::Simple,
-                row: 0,
-                col: 0,
-                children: vec![],
             })
             .add_state(StateNode {
                 id: "running".into(),
                 label: "Running".into(),
                 state_type: StateType::Simple,
-                row: 0,
-                col: 1,
-                children: vec![],
             })
             .add_state(StateNode {
                 id: "done".into(),
                 label: "Done".into(),
-                state_type: StateType::Final,
-                row: 0,
-                col: 2,
-                children: vec![],
+                state_type: StateType::Accepting,
             })
             .initial("idle")
             .add_transition("idle", "running", Some("start"))
@@ -109,67 +91,12 @@ mod tests {
     }
 
     #[test]
-    fn snapshot_composite_state_unicode() {
-        let out = StateDiagram::new(80, Charset::Unicode)
-            .add_state(StateNode {
-                id: "idle".into(),
-                label: "Idle".into(),
-                state_type: StateType::Simple,
-                row: 0,
-                col: 0,
-                children: vec![],
-            })
-            .add_state(StateNode {
-                id: "active".into(),
-                label: "Active".into(),
-                state_type: StateType::Composite,
-                row: 0,
-                col: 1,
-                children: vec![
-                    StateNode {
-                        id: "sub1".into(),
-                        label: "Sub1".into(),
-                        state_type: StateType::Simple,
-                        row: 0,
-                        col: 0,
-                        children: vec![],
-                    },
-                    StateNode {
-                        id: "sub2".into(),
-                        label: "Sub2".into(),
-                        state_type: StateType::Simple,
-                        row: 0,
-                        col: 1,
-                        children: vec![],
-                    },
-                ],
-            })
-            .add_state(StateNode {
-                id: "done".into(),
-                label: "Done".into(),
-                state_type: StateType::Final,
-                row: 0,
-                col: 2,
-                children: vec![],
-            })
-            .initial("idle")
-            .add_transition("idle", "active", Some("begin"))
-            .add_transition("active", "done", Some("end"))
-            .build()
-            .unwrap();
-        insta::assert_snapshot!(out);
-    }
-
-    #[test]
-    fn snapshot_self_loop_unicode() {
+    fn test_self_loop_fsm_unicode() {
         let out = StateDiagram::new(40, Charset::Unicode)
             .add_state(StateNode {
                 id: "idle".into(),
                 label: "Idle".into(),
                 state_type: StateType::Simple,
-                row: 0,
-                col: 0,
-                children: vec![],
             })
             .initial("idle")
             .add_transition("idle", "idle", Some("tick"))
@@ -179,124 +106,76 @@ mod tests {
     }
 
     #[test]
-    fn snapshot_nested_composite_unicode() {
-        let out = StateDiagram::new(120, Charset::Unicode)
+    fn test_two_independent_states_unicode() {
+        let out = StateDiagram::new(80, Charset::Unicode)
             .add_state(StateNode {
-                id: "idle".into(),
-                label: "Idle".into(),
+                id: "a".into(),
+                label: "A".into(),
                 state_type: StateType::Simple,
-                row: 0,
-                col: 0,
-                children: vec![],
             })
             .add_state(StateNode {
-                id: "active".into(),
-                label: "Active".into(),
-                state_type: StateType::Composite,
-                row: 0,
-                col: 1,
-                children: vec![StateNode {
-                    id: "sub_active".into(),
-                    label: "SubActive".into(),
-                    state_type: StateType::Composite,
-                    row: 0,
-                    col: 0,
-                    children: vec![
-                        StateNode {
-                            id: "sub1".into(),
-                            label: "Sub1".into(),
-                            state_type: StateType::Simple,
-                            row: 0,
-                            col: 0,
-                            children: vec![],
-                        },
-                        StateNode {
-                            id: "sub2".into(),
-                            label: "Sub2".into(),
-                            state_type: StateType::Simple,
-                            row: 0,
-                            col: 1,
-                            children: vec![],
-                        },
-                    ],
-                }],
+                id: "b".into(),
+                label: "B".into(),
+                state_type: StateType::Accepting,
             })
-            .initial("idle")
-            .add_transition("idle", "active", Some("begin"))
+            .initial("a")
             .build()
             .unwrap();
         insta::assert_snapshot!(out);
     }
 
     #[test]
-    fn snapshot_history_state_unicode() {
+    fn test_fork_fsm_unicode() {
+        // One state transitions to two independent states — they
+        // should appear in the same layer, side by side.
         let out = StateDiagram::new(80, Charset::Unicode)
             .add_state(StateNode {
                 id: "idle".into(),
                 label: "Idle".into(),
                 state_type: StateType::Simple,
-                row: 0,
-                col: 0,
-                children: vec![],
             })
             .add_state(StateNode {
-                id: "hist".into(),
-                label: "H".into(),
-                state_type: StateType::History,
-                row: 0,
-                col: 1,
-                children: vec![],
-            })
-            .add_state(StateNode {
-                id: "running".into(),
-                label: "Running".into(),
+                id: "a".into(),
+                label: "A".into(),
                 state_type: StateType::Simple,
-                row: 0,
-                col: 2,
-                children: vec![],
+            })
+            .add_state(StateNode {
+                id: "b".into(),
+                label: "B".into(),
+                state_type: StateType::Accepting,
             })
             .initial("idle")
-            .add_transition("idle", "hist", Some("pause"))
-            .add_transition("hist", "running", Some("resume"))
+            .add_transition("idle", "a", Some("go_a"))
+            .add_transition("idle", "b", Some("go_b"))
             .build()
             .unwrap();
         insta::assert_snapshot!(out);
     }
 
     #[test]
-    fn snapshot_overlapping_labels_unicode() {
+    fn test_overlapping_labels_unicode() {
+        // Transitions with long labels must be placed on different
+        // rows to avoid collisions.
         let out = StateDiagram::new(120, Charset::Unicode)
             .add_state(StateNode {
                 id: "a".into(),
                 label: "A".into(),
                 state_type: StateType::Simple,
-                row: 0,
-                col: 0,
-                children: vec![],
             })
             .add_state(StateNode {
                 id: "b".into(),
                 label: "B".into(),
                 state_type: StateType::Simple,
-                row: 0,
-                col: 1,
-                children: vec![],
             })
             .add_state(StateNode {
                 id: "c".into(),
                 label: "C".into(),
                 state_type: StateType::Simple,
-                row: 0,
-                col: 2,
-                children: vec![],
             })
             .add_state(StateNode {
                 id: "d".into(),
                 label: "D".into(),
-                state_type: StateType::Simple,
-                row: 0,
-                col: 3,
-                children: vec![],
+                state_type: StateType::Accepting,
             })
             .initial("a")
             .add_transition("a", "b", Some("very_long_label_one"))
@@ -305,5 +184,32 @@ mod tests {
             .build()
             .unwrap();
         insta::assert_snapshot!(out);
+    }
+
+    #[test]
+    fn test_empty_states_is_error() {
+        let result = StateDiagram::new(80, Charset::Unicode).build();
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_accepting_state_has_double_border() {
+        let out = StateDiagram::new(40, Charset::Unicode)
+            .add_state(StateNode {
+                id: "done".into(),
+                label: "Done".into(),
+                state_type: StateType::Accepting,
+            })
+            .initial("done")
+            .build()
+            .unwrap();
+        // Accepting state must have both outer and inner borders.
+        assert!(out.contains("Done"));
+        // There should be at least 2 top-left rounded corners (outer + inner).
+        let tl_count = out.chars().filter(|&c| c == '╭').count();
+        assert!(
+            tl_count >= 2,
+            "accepting state needs double border, got {tl_count} top-left corners"
+        );
     }
 }

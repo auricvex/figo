@@ -1,4 +1,8 @@
-//! UML state machine diagram renderer.
+//! FSM state diagram renderer.
+//!
+//! Renders states as rounded pills with centered labels. Accepting states
+//! get a double rounded border. Transitions are routed orthogonally with
+//! arrowheads and optional labels.
 
 use std::collections::HashMap;
 use std::fmt;
@@ -12,7 +16,7 @@ use crate::render::surface::Surface;
 use crate::render::widget::{LayoutContext, MeasureContext, PaintContext, Rect, Widget};
 use crate::style::{BorderStyle, Charset, LineStyle};
 
-/// Builder for state machine diagrams.
+/// Builder for FSM state diagrams.
 pub struct StateDiagram<'a> {
     width: usize,
     charset: Charset,
@@ -23,7 +27,7 @@ pub struct StateDiagram<'a> {
 }
 
 impl<'a> StateDiagram<'a> {
-    /// Create a new state diagram builder.
+    /// Create a new FSM diagram builder.
     pub fn new(width: usize, charset: Charset) -> Self {
         Self {
             width,
@@ -41,13 +45,13 @@ impl<'a> StateDiagram<'a> {
         self
     }
 
-    /// Set the initial state.
+    /// Set the initial state (entry point).
     pub fn initial(mut self, state_id: &'a str) -> Self {
         self.initial = Some(state_id);
         self
     }
 
-    /// Add a transition.
+    /// Add a directed transition between two states.
     pub fn add_transition(mut self, from: &str, to: &str, label: Option<&str>) -> Self {
         self.transitions.push(Transition {
             from: from.to_string(),
@@ -70,34 +74,28 @@ impl<'a> StateDiagram<'a> {
         }
 
         let params = LayoutParams::default();
-        let mut layouts = layout_states(&self.states, &params);
-        let child_to_parent = build_parent_map(&layouts);
-        let label_rows = compute_label_rows(&self.transitions, &layouts, &child_to_parent);
+        let mut layouts =
+            layout_states(&self.states, &self.transitions, self.initial, self.width, &params);
+        let label_rows = compute_label_rows(&self.transitions, &layouts);
         let max_label_row = label_rows.values().copied().max().unwrap_or(0);
+        // Shift states down to make room for label rows above the topmost states.
         if max_label_row > 0 {
             shift_layouts(&mut layouts, max_label_row + 1);
         }
-        let id_to_layout = build_id_map(&layouts);
-        let child_to_parent = build_parent_map(&layouts);
 
+        let id_to_layout = build_id_map(&layouts);
         let total_w = compute_canvas_width(&layouts, &params).max(self.width);
-        let total_h = compute_canvas_height(&layouts, &params);
+        let total_h = compute_canvas_height(&layouts, &params, max_label_row);
+
         let mut canvas = Canvas::new(total_w, total_h);
 
         {
             let mut surface = Surface::new(&mut canvas);
             let ctx = PaintContext { charset: self.charset, color: self.color };
 
-            draw_initial_pseudostate(&mut surface, &id_to_layout, self.initial, self.charset);
+            draw_initial_arrow(&mut surface, &id_to_layout, self.initial, self.charset);
             draw_states(&mut surface, &layouts, &ctx)?;
-            draw_transitions(
-                &mut surface,
-                &self.transitions,
-                &id_to_layout,
-                &child_to_parent,
-                &label_rows,
-                &ctx,
-            );
+            draw_transitions(&mut surface, &self.transitions, &id_to_layout, &label_rows, &ctx);
         }
 
         canvas.repair_connector_junctions(LineStyle::Simple, self.charset);
@@ -118,52 +116,34 @@ impl fmt::Display for StateDiagram<'_> {
     }
 }
 
-fn build_id_map(layouts: &[StateLayout]) -> HashMap<String, StateLayoutRef> {
-    let mut map = HashMap::new();
-    for layout in layouts {
-        insert_layout(layout, &mut map);
-    }
-    map
-}
-
-fn insert_layout(layout: &StateLayout, map: &mut HashMap<String, StateLayoutRef>) {
-    map.insert(layout.id.clone(), StateLayoutRef { rect: layout.rect });
-    for child in &layout.children {
-        insert_layout(child, map);
-    }
-}
-
-fn build_parent_map(layouts: &[StateLayout]) -> HashMap<String, String> {
-    let mut map = HashMap::new();
-    for layout in layouts {
-        for child in &layout.children {
-            map.insert(child.id.clone(), layout.id.clone());
-        }
-    }
-    map
-}
+// ── ID mapping ────────────────────────────────────────────────────────
 
 #[derive(Clone, Copy)]
 struct StateLayoutRef {
     rect: Rect,
 }
 
+fn build_id_map(layouts: &[StateLayout]) -> HashMap<String, StateLayoutRef> {
+    layouts.iter().map(|l| (l.id.clone(), StateLayoutRef { rect: l.rect })).collect()
+}
+
+// ── Canvas sizing ─────────────────────────────────────────────────────
+
 fn compute_canvas_width(layouts: &[StateLayout], params: &LayoutParams) -> usize {
     let rightmost = layouts.iter().map(|l| l.rect.right()).max().unwrap_or(0);
     rightmost + params.gap_x
 }
 
-fn compute_canvas_height(layouts: &[StateLayout], params: &LayoutParams) -> usize {
+fn compute_canvas_height(
+    layouts: &[StateLayout],
+    params: &LayoutParams,
+    max_label_row: usize,
+) -> usize {
     let bottommost = layouts.iter().map(|l| l.rect.bottom()).max().unwrap_or(0);
-    bottommost + params.gap_y * 2
+    bottommost + params.gap_y * 2 + max_label_row * 2
 }
 
-fn shift_layouts(layouts: &mut [StateLayout], dy: usize) {
-    for layout in layouts.iter_mut() {
-        layout.rect.y += dy;
-        shift_layouts(&mut layout.children, dy);
-    }
-}
+// ── Label row computation ─────────────────────────────────────────────
 
 #[derive(Debug)]
 struct LabelInfo {
@@ -176,21 +156,19 @@ struct LabelInfo {
 fn compute_label_rows(
     transitions: &[Transition],
     layouts: &[StateLayout],
-    child_to_parent: &HashMap<String, String>,
 ) -> HashMap<usize, usize> {
-    let id_to_layout = build_id_map(layouts);
+    let id_to_layout: HashMap<&str, &StateLayout> =
+        layouts.iter().map(|l| (l.id.as_str(), l)).collect();
+    // In FSM diagrams there are no composite states (all transitions are external).
     let mut labels: Vec<LabelInfo> = Vec::new();
 
-    for (idx, transition) in transitions.iter().enumerate() {
-        if transition.from == transition.to {
+    for (idx, t) in transitions.iter().enumerate() {
+        if t.from == t.to || t.label.is_none() {
             continue;
         }
-        if is_internal_transition(transition, child_to_parent) {
-            continue;
-        }
-        let Some(from) = id_to_layout.get(&transition.from) else { continue };
-        let Some(to) = id_to_layout.get(&transition.to) else { continue };
-        let Some(text) = transition.label.as_ref() else { continue };
+        let Some(from) = id_to_layout.get(t.from.as_str()) else { continue };
+        let Some(to) = id_to_layout.get(t.to.as_str()) else { continue };
+        let text = t.label.as_ref().unwrap();
 
         let from_cx = from.rect.x + from.rect.w / 2;
         let to_cx = to.rect.x + to.rect.w / 2;
@@ -237,7 +215,15 @@ fn compute_label_rows(
     labels.into_iter().map(|l| (l.transition_index, l.row)).collect()
 }
 
-fn draw_initial_pseudostate(
+fn shift_layouts(layouts: &mut [StateLayout], dy: usize) {
+    for layout in layouts.iter_mut() {
+        layout.rect.y += dy;
+    }
+}
+
+// ── Drawing helpers ───────────────────────────────────────────────────
+
+fn draw_initial_arrow(
     surface: &mut Surface<'_>,
     id_to_layout: &HashMap<String, StateLayoutRef>,
     initial: Option<&str>,
@@ -265,7 +251,7 @@ fn draw_states(
     let mut layout_ctx = LayoutContext { charset: ctx.charset, bounds: Rect::default() };
 
     for layout in layouts {
-        draw_state(surface, layout, ctx, &measure_ctx, &mut layout_ctx)?;
+        draw_state(surface, layout, ctx, &measure_ctx, &mut layout_ctx);
     }
     Ok(())
 }
@@ -276,20 +262,11 @@ fn draw_state(
     ctx: &PaintContext,
     measure_ctx: &MeasureContext,
     layout_ctx: &mut LayoutContext,
-) -> Result<()> {
+) {
     match layout.state_type {
-        StateType::Initial => {
-            let dot = if ctx.charset == Charset::Ascii { '*' } else { '●' };
-            surface.put(layout.rect.x, layout.rect.y, dot);
-        }
-        StateType::Final => draw_final_state(surface, layout, ctx, measure_ctx, layout_ctx),
-        StateType::History => draw_history_state(surface, layout, ctx, measure_ctx, layout_ctx),
         StateType::Simple => draw_simple_state(surface, layout, ctx, measure_ctx, layout_ctx),
-        StateType::Composite => {
-            draw_composite_state(surface, layout, ctx, measure_ctx, layout_ctx)?
-        }
+        StateType::Accepting => draw_accepting_state(surface, layout, ctx, measure_ctx, layout_ctx),
     }
-    Ok(())
 }
 
 fn draw_simple_state(
@@ -308,123 +285,55 @@ fn draw_simple_state(
     node.paint(ctx, surface);
 }
 
-fn draw_final_state(
+fn draw_accepting_state(
     surface: &mut Surface<'_>,
     layout: &StateLayout,
     ctx: &PaintContext,
     measure_ctx: &MeasureContext,
     layout_ctx: &mut LayoutContext,
 ) {
-    let mut node = Node::new(ctx.charset)
-        .border(BorderStyle::Rounded)
-        .align(crate::style::HAlign::Center, crate::style::VAlign::Middle);
-    node.measure(measure_ctx);
-    node.layout(layout_ctx, layout.rect);
-    node.paint(ctx, surface);
+    // Outer rounded border.
+    draw_simple_state(surface, layout, ctx, measure_ctx, layout_ctx);
 
-    let (cx, cy) = layout.rect.center();
-    let symbol = if ctx.charset == Charset::Ascii { 'O' } else { '◎' };
-    surface.put_layered(cx, cy, symbol, Layer::NodeContent);
-}
-
-fn draw_history_state(
-    surface: &mut Surface<'_>,
-    layout: &StateLayout,
-    ctx: &PaintContext,
-    measure_ctx: &MeasureContext,
-    layout_ctx: &mut LayoutContext,
-) {
-    let mut node = Node::new(ctx.charset)
-        .border(BorderStyle::Rounded)
-        .align(crate::style::HAlign::Center, crate::style::VAlign::Middle);
-    node.measure(measure_ctx);
-    node.layout(layout_ctx, layout.rect);
-    node.paint(ctx, surface);
-
-    let (cx, cy) = layout.rect.center();
-    surface.put_layered(cx, cy, 'H', Layer::NodeContent);
-}
-
-fn draw_composite_state(
-    surface: &mut Surface<'_>,
-    layout: &StateLayout,
-    ctx: &PaintContext,
-    measure_ctx: &MeasureContext,
-    layout_ctx: &mut LayoutContext,
-) -> Result<()> {
-    let mut outer = Node::new(ctx.charset)
-        .border(BorderStyle::Rounded)
-        .title(layout.label.clone())
-        .align(crate::style::HAlign::Center, crate::style::VAlign::Top);
-    outer.measure(measure_ctx);
-    outer.layout(layout_ctx, layout.rect);
-    outer.paint(ctx, surface);
-
-    // Separator between title and children.
-    let sep_y = layout.rect.y + 2;
-    let glyphs = BorderStyle::Rounded.glyphs(ctx.charset);
-    surface.put_layered(layout.rect.x, sep_y, glyphs.tee_right, Layer::NodeBorder);
-    surface.put_layered(
-        layout.rect.x + layout.rect.w - 1,
-        sep_y,
-        glyphs.tee_left,
-        Layer::NodeBorder,
-    );
-    surface.put_horizontal(
-        layout.rect.x + 1,
-        sep_y,
-        layout.rect.w - 2,
-        glyphs.horizontal,
-        Layer::NodeBorder,
-    );
-
-    for child in &layout.children {
-        draw_state(surface, child, ctx, measure_ctx, layout_ctx)?;
+    // Inner rounded border — inset by 1 cell on all sides.
+    if layout.rect.w >= 4 && layout.rect.h >= 4 {
+        let glyphs = BorderStyle::Rounded.glyphs(ctx.charset);
+        let ix = layout.rect.x + 1;
+        let iy = layout.rect.y + 1;
+        let iw = layout.rect.w - 2;
+        let ih = layout.rect.h - 2;
+        surface.draw_rect(ix, iy, iw, ih, &glyphs);
+        // Clear interior of inner border so label is readable.
+        for ry in 1..ih.saturating_sub(1) {
+            surface.put_horizontal(ix + 1, iy + ry, iw.saturating_sub(2), ' ', Layer::NodeContent);
+        }
+        // Re-draw the label at the center.
+        let lx = layout.rect.x + (layout.rect.w.saturating_sub(layout.label.chars().count())) / 2;
+        let ly = layout.rect.y + layout.rect.h / 2;
+        surface.put_str_layered(lx, ly, &layout.label, Layer::NodeContent);
     }
-    Ok(())
 }
+
+// ── Transition drawing ────────────────────────────────────────────────
 
 fn draw_transitions(
     surface: &mut Surface<'_>,
     transitions: &[Transition],
     id_to_layout: &HashMap<String, StateLayoutRef>,
-    child_to_parent: &HashMap<String, String>,
     label_rows: &HashMap<usize, usize>,
     ctx: &PaintContext,
 ) {
-    for (idx, transition) in transitions.iter().enumerate() {
-        let Some(from) = id_to_layout.get(&transition.from) else { continue };
-        let Some(to) = id_to_layout.get(&transition.to) else { continue };
+    for (idx, t) in transitions.iter().enumerate() {
+        let Some(from) = id_to_layout.get(&t.from) else { continue };
+        let Some(to) = id_to_layout.get(&t.to) else { continue };
 
-        if transition.from == transition.to {
+        if t.from == t.to {
             draw_self_loop(surface, from.rect, ctx);
             continue;
         }
 
-        let is_internal = is_internal_transition(transition, child_to_parent);
-        if is_internal {
-            draw_internal_transition(surface, from.rect, to.rect, transition.label.as_deref(), ctx);
-        } else {
-            let row = label_rows.get(&idx).copied().unwrap_or(0);
-            draw_external_transition(
-                surface,
-                from.rect,
-                to.rect,
-                transition.label.as_deref(),
-                row,
-                ctx,
-            );
-        }
-    }
-}
-
-fn is_internal_transition(
-    transition: &Transition,
-    child_to_parent: &HashMap<String, String>,
-) -> bool {
-    match (child_to_parent.get(&transition.from), child_to_parent.get(&transition.to)) {
-        (Some(a), Some(b)) => a == b,
-        _ => false,
+        let row = label_rows.get(&idx).copied().unwrap_or(0);
+        draw_external_transition(surface, from.rect, to.rect, t.label.as_deref(), row, ctx);
     }
 }
 
@@ -439,15 +348,38 @@ fn draw_external_transition(
     let glyphs = BorderStyle::Single.glyphs(ctx.charset);
     let from_cx = from.x + from.w / 2;
     let to_cx = to.x + to.w / 2;
-    let route_y = from.y.saturating_sub(1);
+    let forward = from.y < to.y;
 
-    if from.y > route_y {
-        surface.put_vertical(from_cx, route_y, from.y - route_y, glyphs.vertical, Layer::Connector);
-    }
-    if to.y > route_y {
-        surface.put_vertical(to_cx, route_y, to.y - route_y, glyphs.vertical, Layer::Connector);
-    }
+    // Anchor points: exit from the edge of `from` that faces `to`.
+    let from_anchor = if forward {
+        from.y + from.h // source bottom, one cell below
+    } else {
+        from.y // source top
+    };
+    let to_anchor = if forward {
+        to.y // target top
+    } else {
+        to.y + to.h - 1 // target bottom
+    };
 
+    // Horizontal corridor in the gap between the two anchor points.
+    let route_y = (from_anchor + to_anchor) / 2;
+
+    // Vertical legs from each anchor to the route corridor.
+    let (from_start, from_len) = if from_anchor < route_y {
+        (from_anchor, route_y - from_anchor + 1)
+    } else {
+        (route_y, from_anchor - route_y + 1)
+    };
+    let (to_start, to_len) = if to_anchor < route_y {
+        (to_anchor, route_y - to_anchor + 1)
+    } else {
+        (route_y, to_anchor - route_y + 1)
+    };
+    surface.put_vertical(from_cx, from_start, from_len, glyphs.vertical, Layer::Connector);
+    surface.put_vertical(to_cx, to_start, to_len, glyphs.vertical, Layer::Connector);
+
+    // Horizontal corridor connecting the two vertical legs.
     let (left_x, right_x) = if from_cx < to_cx { (from_cx, to_cx) } else { (to_cx, from_cx) };
     if right_x > left_x {
         surface.put_horizontal(
@@ -459,44 +391,22 @@ fn draw_external_transition(
         );
     }
 
-    let arrow = if ctx.charset == Charset::Ascii { 'v' } else { '▼' };
-    surface.put_layered(to_cx, to.y, arrow, Layer::ConnectorEnd);
+    // Arrowhead pointing into the target.
+    let arrow_ch = match (forward, ctx.charset) {
+        (true, Charset::Ascii) => 'v',
+        (true, Charset::Unicode) => '▼',
+        (false, Charset::Ascii) => '^',
+        (false, Charset::Unicode) => '▲',
+    };
+    let arrow_y = if forward { to.y } else { to.y + to.h - 1 };
+    surface.put_layered(to_cx, arrow_y, arrow_ch, Layer::ConnectorEnd);
 
+    // Label near the horizontal corridor.
     if let Some(text) = label {
         let label_x = (from_cx + to_cx) / 2;
         let label_x = label_x.saturating_sub(text.chars().count() / 2);
         let label_y = route_y.saturating_sub(1 + row * 2);
         surface.put_str_layered(label_x, label_y, text, Layer::Label);
-    }
-}
-
-fn draw_internal_transition(
-    surface: &mut Surface<'_>,
-    from: Rect,
-    to: Rect,
-    label: Option<&str>,
-    ctx: &PaintContext,
-) {
-    let glyphs = BorderStyle::Single.glyphs(ctx.charset);
-    let cy = from.y + from.h / 2;
-
-    let (left_x, right_x, arrow_x, arrow_ch) = if to.x > from.x + from.w {
-        (from.x + from.w, to.x, to.x, '>')
-    } else if from.x > to.x + to.w {
-        (to.x + to.w, from.x, from.x, '<')
-    } else {
-        (from.x + from.w, to.x, to.x, '>')
-    };
-
-    if right_x > left_x {
-        surface.put_horizontal(left_x, cy, right_x - left_x, glyphs.horizontal, Layer::Connector);
-    }
-    surface.put_layered(arrow_x, cy, arrow_ch, Layer::ConnectorEnd);
-
-    if let Some(text) = label {
-        let label_x = (left_x + right_x) / 2;
-        let label_x = label_x.saturating_sub(text.chars().count() / 2);
-        surface.put_str_layered(label_x, cy.saturating_sub(2), text, Layer::Label);
     }
 }
 

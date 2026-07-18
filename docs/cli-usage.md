@@ -19,7 +19,7 @@
   - [`sequence`](#figo-sequence--sequence-diagram)
   - [`banner`](#figo-banner--figlet-text-banner)
   - [`gantt`](#figo-gantt--gantt-chart)
-  - [`state`](#figo-state--uml-state-diagram)
+  - [`state`](#figo-state--fsm-state-diagram)
 - [Tips & Best Practices](#tips--best-practices)
 
 ---
@@ -82,7 +82,7 @@ Every subcommand accepts JSON input in one of three ways:
 | `sequence`  | Sequence diagram. |
 | `banner`    | FIGlet text banner. |
 | `gantt`     | Gantt chart. |
-| `state`     | UML state machine diagram. |
+| `state`     | FSM state machine diagram. |
 
 ---
 
@@ -99,7 +99,7 @@ Every subcommand accepts JSON input in one of three ways:
 | Illustrate API or service interactions. | `sequence` | Participant lifelines and labeled messages. |
 | Create release banners or headings. | `banner` | Large FIGlet-style text. |
 | Plan sprints or project timelines. | `gantt` | Sections, tasks, progress bars, milestones, and dependencies. |
-| Model state machines. | `state` | Simple, composite, initial, final, and history states. |
+| Model state machines. | `state` | Simple and accepting states with automatic layered layout. |
 
 ---
 
@@ -632,9 +632,11 @@ figo gantt '{"width":80,"charset":"ascii","time_unit":"day","total_units":14,"to
 
 ---
 
-### `figo state` — UML State Diagram
+### `figo state` — FSM State Diagram
 
-Renders UML state machine diagrams with states, transitions, initial/final pseudostates, and composite states.
+Renders finite state machine (FSM) diagrams with automatic layered layout. States
+are drawn as rounded pills; accepting states use a double rounded border.
+Transitions are routed orthogonally with arrowheads and labels.
 
 #### JSON Schema
 
@@ -643,7 +645,7 @@ Renders UML state machine diagrams with states, transitions, initial/final pseud
 | `width` | `number` | Yes | Total width of the diagram. |
 | `charset` | `"ascii" \| "unicode"` | Yes | Character set. |
 | `states` | `State[]` | Yes | Array of states. |
-| `initial` | `string` | No | `id` of the initial state. |
+| `initial` | `string` | No | `id` of the initial (entry) state. |
 | `transitions` | `Transition[]` | No | Array of transitions. |
 | `color` | `boolean` | No | Enable ANSI color. |
 
@@ -651,12 +653,9 @@ Renders UML state machine diagrams with states, transitions, initial/final pseud
 
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
-| `id` | `string` | Yes | Unique identifier. |
-| `label` | `string` | Yes | Display label. |
-| `type` | `"simple" \| "composite" \| "initial" \| "final" \| "history"` | No | State type (default: `"simple"`). |
-| `row` | `number` | No | Grid row for explicit layout. |
-| `col` | `number` | No | Grid column for explicit layout. |
-| `children` | `State[]` | No | Nested states for composite states. |
+| `id` | `string` | Yes | Unique identifier used by transitions. |
+| `label` | `string` | Yes | Display label shown inside the state. |
+| `type` | `"simple" \| "accepting"` | No | State type (default: `"simple"`). Accepting states are drawn with a double border. |
 
 **`Transition` schema:**
 
@@ -664,38 +663,49 @@ Renders UML state machine diagrams with states, transitions, initial/final pseud
 |-------|------|----------|-------------|
 | `from` | `string` | Yes | Source state `id`. |
 | `to` | `string` | Yes | Target state `id`. |
-| `label` | `string` | No | Transition label. |
+| `label` | `string` | No | Transition label (event, condition, or action). |
 
 #### Example Commands
 
 ```sh
-figo state '{"width":80,"charset":"unicode","states":[{"id":"idle","label":"Idle","type":"simple"},{"id":"running","label":"Running","type":"simple"},{"id":"done","label":"Done","type":"final"}],"initial":"idle","transitions":[{"from":"idle","to":"running","label":"start"},{"from":"running","to":"done","label":"finish"},{"from":"running","to":"idle","label":"pause"}]}'
+# Simple FSM with two states
+figo state '{"width":80,"charset":"unicode","states":[{"id":"idle","label":"Idle"},{"id":"done","label":"Done","type":"accepting"}],"initial":"idle","transitions":[{"from":"idle","to":"done","label":"finish"}]}'
 
-figo state '{"width":80,"charset":"ascii","states":[{"id":"idle","label":"Idle","type":"simple"},{"id":"running","label":"Running","type":"simple"},{"id":"done","label":"Done","type":"final"}],"initial":"idle","transitions":[{"from":"idle","to":"running","label":"start"},{"from":"running","to":"done","label":"finish"},{"from":"running","to":"idle","label":"pause"}]}'
+# FSM with self-loop
+figo state '{"width":80,"charset":"unicode","states":[{"id":"idle","label":"Idle"}],"initial":"idle","transitions":[{"from":"idle","to":"idle","label":"tick"}]}'
+
+# ASCII FSM
+figo state '{"width":80,"charset":"ascii","states":[{"id":"idle","label":"Idle"},{"id":"running","label":"Running"}],"initial":"idle","transitions":[{"from":"idle","to":"running","label":"start"}]}'
 ```
 
 #### Unicode Output
 
 ```text
-                      pause
-
-                      start         finish
-               ───────────────────────────────
-        ╭──────▼─────╮    ╭──────▼─────╮    ╭▼╮
-  ●────>│    Idle    │    │  Running   │    │◎│
-        ╰────────────╯    ╰────────────╯    ╰─╯
+                                     ╭────────────╮
+                               ●────>│    Idle    │
+                                     ╰────────────╯
+                                         finish
+                                            │
+                                     ╭──────▼─────╮
+                                     │╭──────────╮│
+                                     ││   Done   ││
+                                     │╰──────────╯│
+                                     ╰────────────╯
 ```
 
 #### ASCII Output
 
 ```text
-                      pause
-
-                      start         finish
-               -------------------------------
-        +------v-----+    +------v-----+    +v+
-  *────>|    Idle    |    |  Running   |    |O|
-        +------------+    +------------+    +-+
+                                     +------------+
+                               *────>|    Idle    |
+                                     +------------+
+                                         finish
+                                            |
+                                     +------v-----+
+                                     ++----------++
+                                     ||   Done   ||
+                                     ++----------++
+                                     +------------+
 ```
 
 ---

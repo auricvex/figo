@@ -249,7 +249,7 @@ figo sequence --output diagram.txt '{"width":80,"charset":"unicode","participant
 | `sequence`  | Sequence diagram |
 | `banner`    | FIGlet text banner |
 | `gantt`     | Gantt chart |
-| `state`     | UML state machine diagram |
+| `state`     | FSM state machine diagram |
 
 See [docs/cli-usage.md](docs/cli-usage.md) for full examples and JSON field
 reference for every subcommand.
@@ -473,13 +473,11 @@ let output = StateDiagram::new(80, Charset::Unicode)
         id: "idle".into(),
         label: "Idle".into(),
         state_type: StateType::Simple,
-        children: vec![],
     })
     .add_state(StateNode {
         id: "done".into(),
         label: "Done".into(),
-        state_type: StateType::Final,
-        children: vec![],
+        state_type: StateType::Accepting,
     })
     .initial("idle")
     .add_transition("idle", "done", Some("complete"))

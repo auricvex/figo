@@ -5,6 +5,22 @@ All notable changes to figo will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.0] — 2026-07-18
+
+### Changed
+
+- **State Diagram** (`figo state`) — complete rewrite from UML state machine to
+  **FSM (Finite State Machine)** style. States are rendered as rounded pills;
+  accepting states use a double rounded border. Automatic layered layout replaces
+  the manual grid-based positioning. Transitions route from source bottom to
+  target top through a gap-based corridor, with direction-aware arrowheads
+  (▼ forward, ▲ back).
+  - **Breaking:** Removed composite, initial (node type), final, and history
+    state types. Use `"simple"` and `"accepting"` instead.
+  - **Breaking:** Removed `row`, `col`, and `children` fields from state nodes.
+    Layout is now fully automatic.
+  - **Breaking:** `StateType::Final` renamed to `StateType::Accepting`.
+
 ## [0.1.0] — 2026-07-16
 
 ### Added
